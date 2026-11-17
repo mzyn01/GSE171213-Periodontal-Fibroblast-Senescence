@@ -1,0 +1,44 @@
+# MATERYAL VE METOT
+
+## 1. Çalışma tasarımı ve veri kaynağı
+Bu çalışma, Gene Expression Omnibus (GEO) veri tabanındaki GSE171213 erişim numaralı insan periodontal doku tek hücreli RNA dizileme (scRNA-seq) verilerinin ikincil ve keşifsel analizidir. Dört sağlıklı kontrol (HC1–HC4), beş periodontitis (PD1–PD5) ve üç periodontal tedavi sonrası (PDT1–PDT3) örneği olmak üzere toplam 12 örnek incelendi. Örneklerin ham gen–hücre sayım matrisleri (`counts.tsv.gz`) ve hücre kimlik listeleri (`cellname.list.txt.gz`) kullanıldı. Hücre kimlikleri, örnek adı ve özgün hücre indeksinin birleşimiyle eşleştirildi. Yeni örnek toplanmadı veya klinik müdahale yapılmadı.
+
+## 2. Kalite kontrol ve yüksek doublet şüphesi filtresi
+Ham verideki 68.542 hücre için toplam UMI sayısı, en az bir UMI saptanan gen sayısı ve `MT-` ile başlayan genlerden hesaplanan mitokondriyal UMI yüzdesi değerlendirildi. 300–6000 gen saptanan, toplam UMI sayısı sıfırdan büyük ve mitokondriyal oranı <%30 olan 44.143 hücre ilk kalite kontrol aşamasını geçti. %15, %20, %25 ve %30 mitokondriyal eşikleri ayrıca duyarlılık amaçlı incelendi.
+
+Yüksek doublet şüphesini belirlemek amacıyla her örnekte 1:1 oranında sentetik doublet oluşturuldu. 10.000 toplam sayıma normalizasyon ve log(1+x) dönüşümünden sonra 2.000 değişken gen, 30 TruncatedSVD bileşeni ve 40 komşu kullanılarak her hücrenin sentetik doublet komşu oranı hesaplandı. Sentetik komşu oranı ≥0,60 **ve** en az iki farklı hücre soyuna ait en az ikişer belirteç pozitifliği birlikte görülen hücreler yüksek şüpheli kabul edilerek dışlandı. Bu operasyonel kuralla 705 hücre elendi ve 43.438 hücre korundu. Ham QC tablosu, doublet karar tablosu ve nihai anotasyon dosyası `(örnek, CellIndex)` kimlikleri üzerinden bire bir denetlendi; 705 dışlanan hücrenin tamamı karar koşulunu sağladı ve nihai dosyada bulunmadı. Bu yöntem kalibre edilmiş doublet olasılığı veya kesin doublet tanısı sağlamaz.
+
+## 3. İlk transkriptomik analiz ve Harmony entegrasyonu
+Korunan hücrelerin ortak gen uzayı üzerinden transkriptomik analizi gerçekleştirildi. 10.000 toplam sayıma normalizasyon ve log(1+x) dönüşümü uygulandı. Mitokondriyal ve ribozomal genler hariç tutularak seçilen 2.500 değişken gen üzerinden 35 TruncatedSVD bileşeni hesaplandı; ikinci–otuz birinci bileşenler arasındaki 30 boyutlu temsil kullanıldı. Başlangıçta MiniBatchKMeans ile 24 keşifsel küme oluşturuldu (`random_state=42`).
+
+Örnek etkisini azaltmak için `harmonypy` ile önceden hesaplanmış 30 boyutlu temsile Harmony uygulandı (`vars_use=['ornek']`, `random_state=42`, `max_iter_harmony=20`). Düzeltilmiş temsilde KMeans ile 24 küme oluşturuldu (`random_state=42`, `n_init=10`). Entegrasyon, örnek–küme ilişkisinin Cramér V katsayısı ve küme uyum ölçümleriyle değerlendirildi. Harmony, genlerin ham UMI sayılarını değiştirmek için kullanılmadı; sonraki gen ekspresyonu ve pseudobulk işlemleri özgün sayımlara dayandı. Örnek karışımındaki artış nedeniyle aşırı düzeltme olasılığı dışlanamadı.
+
+## 4. Fibroblast kimliğinin değerlendirilmesi
+Harmony küme 4'teki 1.343 hücre, fibroblast belirteçleri **COL1A1, COL1A2, DCN, LUM, PDGFRA** ve karşı-soy belirteçleri **PTPRC, EPCAM, PECAM1, KRT14** kullanılarak değerlendirildi. Gen pozitifliği ham UMI sayımının sıfırdan büyük olması şeklinde tanımlandı. Küme 4 ile diğer hücrelerin pozitiflik oranları ve normalize ekspresyonları karşılaştırıldı. Bu işlem belirteç temelli hücre kimliği doğrulamasıdır; bağımsız referans atlasıyla otomatik anotasyon değildir.
+
+## 5. Fibroblastların yeniden kümelenmesi
+Seçilen 1.343 fibroblastın özgün UMI sayımları çıkarıldı; 12 örnekte ortak bulunan 16.790 gen kullanıldı. Hücre başına 10.000 toplam sayıma normalizasyon ve log(1+x) dönüşümü yapıldı. En az beş hücrede saptanan genler arasından 2.000 yüksek değişken gen seçildi; 25 bileşenli TruncatedSVD ve standartlaştırma sonrasında KMeans uygulandı. k=2–6 çözümleri silhouette katsayısı, farklı başlangıçlardaki ARI ve küme büyüklükleriyle karşılaştırıldı. k=2 seçildi (`silhouette=0,0744`; başlangıçlar arası `ARI=0,9911`). Alt küme 0'da 540, alt küme 1'de 803 hücre yer aldı. Görselleştirme için UMAP (20 komşu, `min_dist=0.3`, `random_state=42`) kullanıldı. Düşük silhouette nedeniyle alt kümeler kesin biyolojik alt tipler olarak değil, keşifsel transkriptomik durumlar olarak tanımlandı.
+
+## 6. Senesans, SASP ve bağımsız gen imzaları
+Senesans/hücre döngüsü düzenlenmesi, SASP/sekresyon, inflamasyon, hücresel stres, proliferasyon ve ekstraselüler matriks ile ilişkili önceden belirlenmiş gen panelleri incelendi. Pozitif hücre oranları ham UMI sayımlarından, ekspresyon panel skorları veri setinde mevcut genlerin normalize ekspresyonlarının aritmetik ortalamasından hesaplandı. Düşük ekspresyonlu genlerde sıfır sayım biyolojik negatiflik olarak yorumlanmadı.
+
+Bağımsız referans olarak özgün SenMayo 125 genlik imzası (Saul ve ark., 2022; ek veri), HAGR CellAge gen veri tabanı ve Cell Senescence Signatures kullanıldı. Gen sembolleri 16.790 genlik matrise eşleştirildi. SenMayo'nun 99/125 (%79,2), CellAge yönlü panelinin 760/845 (%89,9) ve Cell Senescence Signatures yönlü panelinin 1.171/1.259 (%93,0) geni ölçülebildi. CellAge'de senesansı indükleyen ve baskılayan genler; Cell Senescence Signatures'da artan ve azalan genler ayrı puanlandı. Yönlü skor, pozitif yönlü genlerin ortalama skorundan negatif yönlü genlerin ortalama skorunun çıkarılmasıyla oluşturuldu. SenMayo'nun SASP ağırlıklı olması ve imzaların inflamasyon/stres programlarıyla örtüşebilmesi nedeniyle tek başına senesans tanısı için kullanılmadı.
+
+## 7. Pseudobulk analizi ve istatistiksel karşılaştırmalar
+Biyolojik tekrar birimi hücre değil, örnek olarak kabul edildi. Her örnek ve fibroblast alt kümesi için özgün ham UMI sayımları gen bazında toplandı. Pseudobulk profilleri CPM ile normalize edilerek `log2(1+CPM)` dönüşümü uygulandı. Alt kümeler arası eşleştirilmiş karşılaştırmalara her iki alt kümede en az 10 hücresi olan yedi örnek (HC1, HC3, HC4, PD1, PD2, PD3, PD5) dahil edildi. Örnek başına alt küme 1 – alt küme 0 farkları hesaplandı ve iki yönlü eksiksiz işaret değiştirme testi (2^7=128 işaret düzeni) kullanıldı. HC (n=4), PD (n=5) ve PDT (n=3) gruplarının bağımsız örnek düzeyindeki karşılaştırmalarında tam permütasyon testleri uygulandı. Gen ve panel karşılaştırmalarında Benjamini–Hochberg FDR düzeltmesi kullanıldı; `q<0,05` anlamlılık sınırı kabul edildi. Bu yaklaşım negatif binom dağılımına dayalı edgeR/DESeq2 diferansiyel ekspresyon modelinin yerine geçmez.
+
+## 8. GO ve Reactome gen kümesi zenginleştirmesi
+Yedi eşleştirilmiş örnekteki alt küme 1 – alt küme 0 ortalama `log2(1+CPM)` farklarıyla genler sıralandı. Pozitif değerler alt küme 1, negatif değerler alt küme 0 yönündeki ekspresyon artışını gösterdi. Çoklu test düzeltmesinden sonra anlamlı gen bulunmadığından anlamlı gen listesine dayalı ORA yerine tüm sıralamayı kullanan ön sıralamalı GSEA (`GSEApy.prerank`) gerçekleştirildi. GO Biological Process 2023 ve Reactome 2022 koleksiyonları kullanıldı; gen kümesi büyüklüğü 10–500 gen, permütasyon sayısı 1.000 ve rastgele başlangıç `20261116` olarak belirlendi. NES işareti yukarıdaki sıralama yönüne göre yorumlandı; `FDR<0,05` anlamlılık sınırı olarak kullanıldı. GSEA permütasyonları biyolojik örnek etiketlerine değil gen kümesi zenginleşmesine dayandığından sonuçlar keşifsel olarak yorumlandı.
+
+## 9. Tekrarlanabilirlik, etik ve sınırlamalar
+Ham veri kaynakları, hücre kimlik eşleştirmeleri, QC ve doublet kararları, Harmony çıktıları, fibroblast etiketleri, pseudobulk sayımları, gen sıralaması, SenMayo/CellAge referans listeleri ve GO/Reactome sonuç tabloları analiz süresince ayrı dosyalarda saklandı. Kümelenme ve GSEA için sabit rastgele başlangıç değerleri kullanıldı. Nihai ek yöntem dosyasında Python ve paket sürümleri, çalıştırılan betiklerin tam sürümleri ve dosya sağlama toplamları verilmelidir. Çalışma kamuya açık, kimliksizleştirilmiş verilerin ikincil analizidir; etik kurul gerekliliği ilgili kurumun düzenlemelerine göre teyit edilmelidir.
+
+Alt küme ayrımının zayıf olması, olası Harmony aşırı düzeltmesi, küçük biyolojik örneklem, PDT grubunda yalnızca 28 fibroblast bulunması ve SASP/stres/senesans imzalarının örtüşmesi temel sınırlamalardır. Gen ekspresyon imzaları hücresel senesansın deneysel veya fonksiyonel kanıtı olarak yorumlanmadı.
+
+## Kaynak veri ve yöntem bağlantıları
+- GEO: GSE171213 (https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE171213)
+- Saul ve ark. (2022), SenMayo (https://doi.org/10.1038/s41467-022-32552-1)
+- HAGR CellAge (https://genomics.senescence.info/cells/)
+- HAGR veri indirmeleri (https://genomics.senescence.info/download.html)
+
+**Editöryal not:** Bu metin mevcut analiz raporları ve betiklerden derlenmiştir. Yayın öncesi paket sürümleri, örnek–donör eşleşmesi ve tüm ham analiz betiklerinin arşivlenmesi ayrıca tamamlanmalıdır.
